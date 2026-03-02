@@ -189,9 +189,14 @@ async def run_agent(request: TaskRequest):
         browser = Browser(**browser_kwargs)
 
         final_task = (
-            f"{request.instruction} "
-            "IMPORTANT: Once you have completed the task or found the answer, "
-            "you must use the 'finish' tool to output it clearly."
+            f"{request.instruction}\n\n"
+            "RULES YOU MUST FOLLOW:\n"
+            "1. If you need to find image URLs on a page, you MUST use the "
+            "'Get all image URLs on the current page with metadata' tool. "
+            "It returns each image's url, alt text, title, dimensions, and position.\n"
+            "2. Do NOT use find_elements to get image URLs — it does not return "
+            "attribute values and will loop forever. Never use find_elements for this purpose.\n"
+            "3. Once you have the answer, use the 'finish' tool to output it clearly."
         )
 
         agent = Agent(
