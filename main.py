@@ -74,6 +74,31 @@ async def get_image_urls(browser: Browser):
     return {"images": images, "count": len(images)}
 
 
+@controller.action("Get image URL at screen position")
+async def get_image_at_position(x: int, y: int, browser: Browser):
+    """
+    Returns the URL of the image at the given x,y screen coordinates.
+    Use this when you can SEE the target image in the screenshot:
+    1. Identify roughly where the image is on screen (x, y in pixels)
+    2. Call this tool with those coordinates
+    3. Get back the exact image URL — no looping, no ambiguity.
+    """
+    page = await browser.get_current_page()
+    url = await page.evaluate(f"""
+        () => {{
+            const el = document.elementFromPoint({x}, {y});
+            if (!el) return null;
+            const img = el.tagName === 'IMG' ? el : el.closest('img') || el.querySelector('img');
+            if (img) return img.currentSrc || img.src || null;
+            // fallback: check CSS background-image
+            const bg = getComputedStyle(el).backgroundImage;
+            const match = bg && bg.match(/url\\(["']?([^"')]+)["']?\\)/);
+            return match ? match[1] : null;
+        }}
+    """)
+    return {{"url": url, "x": x, "y": y}}
+
+
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class TaskRequest(BaseModel):
@@ -191,12 +216,13 @@ async def run_agent(request: TaskRequest):
         final_task = (
             f"{request.instruction}\n\n"
             "RULES YOU MUST FOLLOW:\n"
-            "1. If you need to find image URLs on a page, you MUST use the "
-            "'Get all image URLs on the current page with metadata' tool. "
-            "It returns each image's url, alt text, title, dimensions, and position.\n"
-            "2. Do NOT use find_elements to get image URLs — it does not return "
-            "attribute values and will loop forever. Never use find_elements for this purpose.\n"
-            "3. Once you have the answer, use the 'finish' tool to output it clearly."
+            "1. To get ALL image URLs on a page: use 'Get all image URLs on the current page with metadata'.\n"
+            "2. To get ONE specific image URL (preferred for logos/specific images): "
+            "look at the screenshot, estimate the x,y pixel position of the target image, "
+            "then call 'Get image URL at screen position' with those coordinates. "
+            "This is pixel-precise and never returns the wrong image.\n"
+            "3. NEVER use find_elements to get image URLs — it does not return attribute values.\n"
+            "4. Once you have the answer, use the 'finish' tool to output it clearly."
         )
 
         agent = Agent(
