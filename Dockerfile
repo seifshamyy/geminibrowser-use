@@ -5,6 +5,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium
 RUN playwright install-deps
+
+# Persistent data directory for cookies
+RUN mkdir -p /data
+VOLUME ["/data"]
+
 COPY . .
 ENV PORT=8080
 EXPOSE 8080
