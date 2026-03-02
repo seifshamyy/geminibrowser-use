@@ -21,6 +21,9 @@ class TaskRequest(BaseModel):
 class CookiesRequest(BaseModel):
     storage_state: dict  # Playwright storage_state format: {cookies: [...], origins: [...]}
 
+class RawCookiesRequest(BaseModel):
+    cookies: list  # Chrome extension format (Cookie-Editor, EditThisCookie, etc.)
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -28,12 +31,17 @@ def home():
     return {"status": "Gemini Browser Agent is Awake"}
 
 
+def _convert_samesite(value):
+    """Map Chrome extension sameSite strings to Playwright format."""
+    mapping = {"no_restriction": "None", "lax": "Lax", "strict": "Strict"}
+    if value is None:
+        return "None"
+    return mapping.get(value.lower(), "None")
+
+
 @app.post("/set-cookies")
 def set_cookies(request: CookiesRequest):
-    """
-    Upload your browser session (cookies + localStorage) in Playwright storage_state format.
-    Export from Chrome using Cookie-Editor extension or the export script in export_cookies.py.
-    """
+    """Upload session in Playwright storage_state format: {cookies: [...], origins: [...]}"""
     os.makedirs(os.path.dirname(COOKIES_FILE), exist_ok=True)
     with open(COOKIES_FILE, "w") as f:
         json.dump(request.storage_state, f, indent=2)
@@ -42,6 +50,37 @@ def set_cookies(request: CookiesRequest):
     return {
         "status": "success",
         "message": f"Stored {cookie_count} cookies. They will be injected into every agent run."
+    }
+
+
+@app.post("/set-cookies-raw")
+def set_cookies_raw(request: RawCookiesRequest):
+    """
+    Upload cookies in Chrome Extension format (Cookie-Editor, EditThisCookie, etc.).
+    Auto-converts to Playwright storage_state — paste the exported array directly.
+    """
+    playwright_cookies = [
+        {
+            "name": c["name"],
+            "value": c["value"],
+            "domain": c["domain"],
+            "path": c.get("path", "/"),
+            "expires": c.get("expirationDate", -1) or -1,
+            "httpOnly": c.get("httpOnly", False),
+            "secure": c.get("secure", False),
+            "sameSite": _convert_samesite(c.get("sameSite")),
+        }
+        for c in request.cookies
+    ]
+
+    storage_state = {"cookies": playwright_cookies, "origins": []}
+    os.makedirs(os.path.dirname(COOKIES_FILE), exist_ok=True)
+    with open(COOKIES_FILE, "w") as f:
+        json.dump(storage_state, f, indent=2)
+
+    return {
+        "status": "success",
+        "message": f"Converted and stored {len(playwright_cookies)} cookies."
     }
 
 
