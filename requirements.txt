@@ -1,6 +1,5 @@
 fastapi
 uvicorn
 browser-use
-langchain-google-genai
 playwright
 python-dotenv
