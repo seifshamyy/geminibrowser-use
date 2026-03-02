@@ -5,7 +5,6 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from browser_use import Agent, ChatGoogle, Browser, Controller
-from browser_use.browser.browser import Browser
 from dotenv import load_dotenv
 
 load_dotenv()
