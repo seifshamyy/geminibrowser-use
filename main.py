@@ -6,6 +6,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 import asyncio
 from dotenv import load_dotenv
 
+# browser-use checks for llm.provider internally — subclass to expose it
+class GeminiLLM(ChatGoogleGenerativeAI):
+    provider: str = "google"
+
 load_dotenv()
 
 app = FastAPI()
@@ -20,7 +24,7 @@ def home():
 @app.post("/run")
 async def run_agent(request: TaskRequest):
     try:
-        llm = ChatGoogleGenerativeAI(
+        llm = GeminiLLM(
             model="gemini-2.5-pro",
             google_api_key=os.getenv("GEMINI_API_KEY"),
             temperature=0.0,
