@@ -120,8 +120,8 @@ async def run_agent(request: TaskRequest):
     try:
         llm = ChatGoogle(model="gemini-2.5-pro")
 
-        # Inject cookies if available
-        browser_kwargs = {}
+        # Cloud stealth browser — residential IP, no automation fingerprint
+        browser_kwargs = {"use_cloud": True}
         if os.path.exists(COOKIES_FILE):
             browser_kwargs["storage_state"] = COOKIES_FILE
 
