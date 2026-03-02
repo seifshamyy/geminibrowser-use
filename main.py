@@ -4,7 +4,8 @@ import asyncio
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from browser_use import Agent, ChatGoogle, Browser
+from browser_use import Agent, ChatGoogle, Browser, Controller
+from browser_use.browser.browser import Browser
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,6 +13,59 @@ load_dotenv()
 app = FastAPI()
 
 COOKIES_FILE = "/data/storage_state.json"
+
+# ── Image extraction custom tool ──────────────────────────────────────────────
+
+controller = Controller()
+
+_JS_EXTRACT_IMAGES = """
+() => {
+    const seen = new Set();
+    const results = [];
+
+    const add = (url) => {
+        if (!url || seen.has(url)) return;
+        if (url.startsWith('data:')) return;          // skip base64
+        if (url.startsWith('blob:')) return;          // skip blobs
+        seen.add(url);
+        results.push(url);
+    };
+
+    // 1. Standard <img> — src, currentSrc, data-src variants
+    document.querySelectorAll('img').forEach(img => {
+        add(img.currentSrc || img.src);
+        ['data-src','data-lazy','data-original','data-lazy-src',
+         'data-hi-res-src','data-full-src'].forEach(attr => {
+            if (img.dataset) add(img.getAttribute(attr));
+        });
+        // Pick highest-res from srcset
+        if (img.srcset) {
+            const best = img.srcset.split(',').map(s => {
+                const [url, w] = s.trim().split(/\\s+/);
+                return { url, w: parseFloat(w) || 0 };
+            }).sort((a, b) => b.w - a.w)[0];
+            if (best) add(best.url);
+        }
+    });
+
+    // 2. CSS background-image on any element
+    document.querySelectorAll('*').forEach(el => {
+        const bg = getComputedStyle(el).backgroundImage;
+        const match = bg && bg.match(/url\\(["']?([^"')]+)["']?\\)/);
+        if (match) add(match[1]);
+    });
+
+    // 3. Filter tiny tracking pixels (natural size < 10px)
+    return results.filter(u => u && u.startsWith('http'));
+}
+"""
+
+@controller.action("Get all image URLs on the current page")
+async def get_image_urls(browser: Browser):
+    """Extracts every image URL via JavaScript — no right-clicking needed."""
+    page = await browser.get_current_page()
+    urls = await page.evaluate(_JS_EXTRACT_IMAGES)
+    return {"image_urls": urls, "count": len(urls)}
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -137,6 +191,7 @@ async def run_agent(request: TaskRequest):
             task=final_task,
             llm=llm,
             browser=browser,
+            controller=controller,
             max_steps=int(os.getenv("MAX_AGENT_STEPS", "20")),
         )
 
