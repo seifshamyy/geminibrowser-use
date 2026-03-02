@@ -23,49 +23,57 @@ _JS_EXTRACT_IMAGES = """
     const seen = new Set();
     const results = [];
 
-    const add = (url) => {
-        if (!url || seen.has(url)) return;
-        if (url.startsWith('data:')) return;          // skip base64
-        if (url.startsWith('blob:')) return;          // skip blobs
-        seen.add(url);
-        results.push(url);
-    };
-
-    // 1. Standard <img> — src, currentSrc, data-src variants
     document.querySelectorAll('img').forEach(img => {
-        add(img.currentSrc || img.src);
-        ['data-src','data-lazy','data-original','data-lazy-src',
-         'data-hi-res-src','data-full-src'].forEach(attr => {
-            if (img.dataset) add(img.getAttribute(attr));
-        });
-        // Pick highest-res from srcset
+        // Pick the best available URL
+        const candidates = [
+            img.currentSrc, img.src,
+            img.getAttribute('data-src'),
+            img.getAttribute('data-lazy'),
+            img.getAttribute('data-original'),
+            img.getAttribute('data-lazy-src'),
+            img.getAttribute('data-hi-res-src'),
+            img.getAttribute('data-full-src'),
+        ];
         if (img.srcset) {
             const best = img.srcset.split(',').map(s => {
                 const [url, w] = s.trim().split(/\\s+/);
                 return { url, w: parseFloat(w) || 0 };
             }).sort((a, b) => b.w - a.w)[0];
-            if (best) add(best.url);
+            if (best) candidates.push(best.url);
         }
+        const url = candidates.find(u => u && u.startsWith('http') && !seen.has(u));
+        if (!url) return;
+        seen.add(url);
+
+        const rect = img.getBoundingClientRect();
+        const anchor = img.closest('a');
+
+        results.push({
+            url,
+            alt:         img.alt || null,
+            title:       img.title || img.getAttribute('aria-label') || null,
+            width:       img.naturalWidth  || Math.round(rect.width),
+            height:      img.naturalHeight || Math.round(rect.height),
+            position:    { x: Math.round(rect.x), y: Math.round(rect.y) },
+            parent_link: anchor ? anchor.href : null,
+        });
     });
 
-    // 2. CSS background-image on any element
-    document.querySelectorAll('*').forEach(el => {
-        const bg = getComputedStyle(el).backgroundImage;
-        const match = bg && bg.match(/url\\(["']?([^"')]+)["']?\\)/);
-        if (match) add(match[1]);
-    });
-
-    // 3. Filter tiny tracking pixels (natural size < 10px)
-    return results.filter(u => u && u.startsWith('http'));
+    return results;
 }
 """
 
-@controller.action("Get all image URLs on the current page")
+@controller.action("Get all image URLs on the current page with metadata")
 async def get_image_urls(browser: Browser):
-    """Extracts every image URL via JavaScript — no right-clicking needed."""
+    """
+    Returns structured image data: url, alt text, title, dimensions (px),
+    page position (x/y), and parent link href.
+    Use this to identify exactly which URL belongs to which image on the page.
+    """
     page = await browser.get_current_page()
-    urls = await page.evaluate(_JS_EXTRACT_IMAGES)
-    return {"image_urls": urls, "count": len(urls)}
+    images = await page.evaluate(_JS_EXTRACT_IMAGES)
+    return {"images": images, "count": len(images)}
+
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
