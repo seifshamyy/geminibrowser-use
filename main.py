@@ -215,14 +215,17 @@ async def run_agent(request: TaskRequest):
 
         final_task = (
             f"{request.instruction}\n\n"
-            "RULES YOU MUST FOLLOW:\n"
-            "1. To get ALL image URLs on a page: use 'Get all image URLs on the current page with metadata'.\n"
-            "2. To get ONE specific image URL (preferred for logos/specific images): "
-            "look at the screenshot, estimate the x,y pixel position of the target image, "
-            "then call 'Get image URL at screen position' with those coordinates. "
-            "This is pixel-precise and never returns the wrong image.\n"
-            "3. NEVER use find_elements to get image URLs — it does not return attribute values.\n"
-            "4. Once you have the answer, use the 'finish' tool to output it clearly."
+            "STRICT STEP ORDER — follow exactly:\n"
+            "STEP 1: Search (use Bing or DuckDuckGo, not Google) to find the official website.\n"
+            "STEP 2: Click through to and fully load the TARGET website — "
+            "confirm the current URL is NOT a search engine before continuing.\n"
+            "STEP 3: Only AFTER you are on the target site, extract images using one of:\n"
+            "   a) 'Get image URL at screen position' — look at the screenshot, "
+            "estimate x,y of the specific image you want, call with those coords. PREFERRED.\n"
+            "   b) 'Get all image URLs on the current page with metadata' — if you need to browse all images.\n"
+            "NEVER call image tools while on a search engine page.\n"
+            "NEVER use find_elements for image URLs — it returns no attribute values.\n"
+            "STEP 4: Use the 'finish' tool to return the final image URL."
         )
 
         agent = Agent(
