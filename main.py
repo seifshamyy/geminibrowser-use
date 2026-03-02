@@ -19,7 +19,7 @@ def home():
 @app.post("/run")
 async def run_agent(request: TaskRequest):
     try:
-        llm = ChatGoogle(model="gemini-2.5-pro")
+        llm = ChatGoogle(model="gemini-3.1-pro")
 
         final_task = (
             f"{request.instruction} "
