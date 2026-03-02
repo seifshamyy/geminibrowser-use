@@ -137,6 +137,7 @@ async def run_agent(request: TaskRequest):
             task=final_task,
             llm=llm,
             browser=browser,
+            max_steps=int(os.getenv("MAX_AGENT_STEPS", "20")),
         )
 
         history = await agent.run()
