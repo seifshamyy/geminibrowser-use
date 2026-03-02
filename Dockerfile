@@ -8,7 +8,6 @@ RUN playwright install-deps
 
 # Persistent data directory for cookies
 RUN mkdir -p /data
-VOLUME ["/data"]
 
 COPY . .
 ENV PORT=8080
