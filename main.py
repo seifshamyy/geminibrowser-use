@@ -156,7 +156,19 @@ async def run_agent(request: TaskRequest):
             else:
                 result = "No result produced."
 
-        return {"status": "success", "result": result}
+        # Extract the final screenshot from the execution history
+        screenshots = history.screenshots()
+        final_screenshot = None
+        if screenshots:
+            valid_screenshots = [s for s in screenshots if s is not None]
+            if valid_screenshots:
+                final_screenshot = valid_screenshots[-1]
+
+        return {
+            "status": "success", 
+            "result": result,
+            "screenshot_base64": final_screenshot
+        }
 
     except Exception as e:
         print(f"Error: {e}")
