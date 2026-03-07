@@ -3,3 +3,4 @@ uvicorn
 browser-use
 playwright
 python-dotenv
+langchain-anthropic

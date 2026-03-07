@@ -4,7 +4,8 @@ import asyncio
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from browser_use import Agent, ChatGoogle, Browser, Controller
+from browser_use import Agent, Browser
+from langchain_anthropic import ChatAnthropic
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,92 +13,6 @@ load_dotenv()
 app = FastAPI()
 
 COOKIES_FILE = "/data/storage_state.json"
-
-# ── Image extraction custom tool ──────────────────────────────────────────────
-
-controller = Controller()
-
-_JS_EXTRACT_IMAGES = """
-() => {
-    const seen = new Set();
-    const results = [];
-
-    document.querySelectorAll('img').forEach(img => {
-        // Pick the best available URL
-        const candidates = [
-            img.currentSrc, img.src,
-            img.getAttribute('data-src'),
-            img.getAttribute('data-lazy'),
-            img.getAttribute('data-original'),
-            img.getAttribute('data-lazy-src'),
-            img.getAttribute('data-hi-res-src'),
-            img.getAttribute('data-full-src'),
-        ];
-        if (img.srcset) {
-            const best = img.srcset.split(',').map(s => {
-                const [url, w] = s.trim().split(/\\s+/);
-                return { url, w: parseFloat(w) || 0 };
-            }).sort((a, b) => b.w - a.w)[0];
-            if (best) candidates.push(best.url);
-        }
-        const url = candidates.find(u => u && u.startsWith('http') && !seen.has(u));
-        if (!url) return;
-        seen.add(url);
-
-        const rect = img.getBoundingClientRect();
-        const anchor = img.closest('a');
-
-        results.push({
-            url,
-            alt:         img.alt || null,
-            title:       img.title || img.getAttribute('aria-label') || null,
-            width:       img.naturalWidth  || Math.round(rect.width),
-            height:      img.naturalHeight || Math.round(rect.height),
-            position:    { x: Math.round(rect.x), y: Math.round(rect.y) },
-            parent_link: anchor ? anchor.href : null,
-        });
-    });
-
-    return results;
-}
-"""
-
-@controller.action("Get all image URLs on the current page with metadata")
-async def get_image_urls(browser: Browser):
-    """
-    Returns structured image data: url, alt text, title, dimensions (px),
-    page position (x/y), and parent link href.
-    Use this to identify exactly which URL belongs to which image on the page.
-    """
-    page = await browser.get_current_page()
-    images = await page.evaluate(_JS_EXTRACT_IMAGES)
-    return {"images": images, "count": len(images)}
-
-
-@controller.action("Get image URL at screen position")
-async def get_image_at_position(x: int, y: int, browser: Browser):
-    """
-    Returns the URL of the image at the given x,y screen coordinates.
-    Use this when you can SEE the target image in the screenshot:
-    1. Identify roughly where the image is on screen (x, y in pixels)
-    2. Call this tool with those coordinates
-    3. Get back the exact image URL — no looping, no ambiguity.
-    """
-    page = await browser.get_current_page()
-    url = await page.evaluate(f"""
-        () => {{
-            const el = document.elementFromPoint({x}, {y});
-            if (!el) return null;
-            const img = el.tagName === 'IMG' ? el : el.closest('img') || el.querySelector('img');
-            if (img) return img.currentSrc || img.src || null;
-            // fallback: check CSS background-image
-            const bg = getComputedStyle(el).backgroundImage;
-            const match = bg && bg.match(/url\\(["']?([^"')]+)["']?\\)/);
-            return match ? match[1] : null;
-        }}
-    """)
-    return {{"url": url, "x": x, "y": y}}
-
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -204,35 +119,26 @@ def delete_cookies():
 @app.post("/run")
 async def run_agent(request: TaskRequest):
     try:
-        llm = ChatGoogle(model="gemini-2.5-pro")
+        # Use Claude model
+        llm = ChatAnthropic(
+            model_name="claude-4.6-sonnet-latest",
+            temperature=0.0
+        )
 
         # Cloud stealth browser — residential IP, no automation fingerprint
-        browser_kwargs = {"use_cloud": True}
+        browser_kwargs = {
+            "use_cloud": True,
+            "cloud_proxy_country_code": "sa",  # Route stealth proxy through Saudi Arabia natively
+        }
         if os.path.exists(COOKIES_FILE):
             browser_kwargs["storage_state"] = COOKIES_FILE
 
         browser = Browser(**browser_kwargs)
 
-        final_task = (
-            f"{request.instruction}\n\n"
-            "STRICT STEP ORDER — follow exactly:\n"
-            "STEP 1: Search (use Bing or DuckDuckGo, not Google) to find the official website.\n"
-            "STEP 2: Click through to and fully load the TARGET website — "
-            "confirm the current URL is NOT a search engine before continuing.\n"
-            "STEP 3: Only AFTER you are on the target site, extract images using one of:\n"
-            "   a) 'Get image URL at screen position' — look at the screenshot, "
-            "estimate x,y of the specific image you want, call with those coords. PREFERRED.\n"
-            "   b) 'Get all image URLs on the current page with metadata' — if you need to browse all images.\n"
-            "NEVER call image tools while on a search engine page.\n"
-            "NEVER use find_elements for image URLs — it returns no attribute values.\n"
-            "STEP 4: Use the 'finish' tool to return the final image URL."
-        )
-
         agent = Agent(
-            task=final_task,
+            task=request.instruction,
             llm=llm,
             browser=browser,
-            controller=controller,
             max_steps=int(os.getenv("MAX_AGENT_STEPS", "20")),
         )
 
