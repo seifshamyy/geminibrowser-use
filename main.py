@@ -121,7 +121,7 @@ async def run_agent(request: TaskRequest):
     try:
         # Use Claude model
         llm = ChatAnthropic(
-            model="claude-4.6-sonnet-latest",
+            model="claude-3-7-sonnet-latest",
             temperature=0.0
         )
 
