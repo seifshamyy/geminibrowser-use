@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from browser_use import Agent, Browser
-from langchain_anthropic import ChatAnthropic
+from browser_use.llm.anthropic.chat import ChatAnthropic
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -121,7 +121,7 @@ async def run_agent(request: TaskRequest):
     try:
         # Use Claude model
         llm = ChatAnthropic(
-            model_name="claude-4.6-sonnet-latest",
+            model="claude-4.6-sonnet-latest",
             temperature=0.0
         )
 
